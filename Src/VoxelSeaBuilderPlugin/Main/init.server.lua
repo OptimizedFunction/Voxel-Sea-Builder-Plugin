@@ -189,9 +189,9 @@ function updateBrush(position : Vector3)
         brush = currentBrush
         brush.Position = position
 
-        if brushType == 'Cuboidal' and not currentBrush:FindFirstChild('SelectionBox') then
-            updateCurrentBrushType(brush)
-        elseif brushType == 'Spherical' and not currentBrush:FindFirstChild('SelectionSphere') then
+        if (brushType == 'Cuboidal' and not currentBrush:FindFirstChild('SelectionBox')) or
+            (brushType == 'Spherical' and not currentBrush:FindFirstChild('SelectionSphere'))
+        then
             updateCurrentBrushType(brush)
         end
 
