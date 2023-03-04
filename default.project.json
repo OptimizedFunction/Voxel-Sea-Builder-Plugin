@@ -1,0 +1,12 @@
+{
+    "name": "Voxel Sea Builder Plugin",
+    "tree": {
+      "$className": "DataModel",
+      "ServerStorage": {
+        "$className": "ServerStorage",
+        "$ignoreUnknownInstances": true,
+        "$path": "Src"
+      }
+      
+    }
+}
