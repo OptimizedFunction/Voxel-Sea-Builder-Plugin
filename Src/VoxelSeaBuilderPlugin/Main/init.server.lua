@@ -459,8 +459,8 @@ function loadWorld()
     end
 end
 
-saveButton.MouseButton1Down:Connect(saveWorld)
-loadButton.MouseButton1Down:Connect(loadWorld)
+-- saveButton.MouseButton1Down:Connect(saveWorld)
+-- loadButton.MouseButton1Down:Connect(loadWorld)
 
 --Toolbar button onclick connection
 button.Click:Connect(function()
