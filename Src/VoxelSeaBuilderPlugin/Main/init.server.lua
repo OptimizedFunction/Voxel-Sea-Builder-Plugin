@@ -291,7 +291,7 @@ function onMouseClick()
 
         local chunks_to_update = {}
 
-        for _, voxel in pairs(voxelsInBrush) do
+        for _, voxel in voxelsInBrush do
 
             local chunk = voxel[1]
             local index = voxel[2]
@@ -305,7 +305,7 @@ function onMouseClick()
             end
         end
 
-        for _, chunk in pairs(chunks_to_update) do
+        for _, chunk in chunks_to_update do
             chunk:Update()
         end
         task.wait(0.1)
@@ -317,7 +317,7 @@ function updateViewportInterface()
     local material_indicator : ImageLabel = VPInterface['Material Indicator']
     local textureID : string
     if currentMat ~= 0 then
-        for _, material in ipairs(material_info) do
+        for _, material in material_info do
             if currentMat == material['Code'] then
                 textureID = material['Textures']['Front'].Texture
             end
@@ -337,7 +337,7 @@ function encodeUpdates(update_log): string
 
     local function deepCopy(t: {})
         local copy = {}
-        for k, v in pairs(t) do
+        for k, v in t do
             if type(v) == 'table' then
                 v = deepCopy(v)
             end
@@ -347,7 +347,7 @@ function encodeUpdates(update_log): string
     end
 
     local function tableEquals(t1, t2)
-        for k, v in ipairs(t1) do
+        for k, v in t1 do
             if t2[k] ~= v then
                 return false
             end
