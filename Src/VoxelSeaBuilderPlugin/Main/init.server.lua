@@ -1,17 +1,14 @@
 
 local Modules = require(script.Parent.ModuleIndex)
 local Replicator = require(Modules.ReplicatorAndUpdateLogger)
-local ChunkClass = require(Modules.Chunk)
 local VoxelLib = require(Modules.VoxelLib)
 local AssetManager = require(Modules.AssetManager)
 local PoolService = require(Modules.PoolService)
 local Configuration = require(Modules.Configuration)
-local StringCompression = require(script.StringCompression)
 
 local VPInterface = require(script.UiSetup)
 
 local UIS: UserInputService = game:GetService('UserInputService')
-local HttpService: HttpService = game:GetService('HttpService')
 
 local voxel_size : number = Configuration.GetVoxelSize()
 local material_info = AssetManager.Material_Info
@@ -83,37 +80,6 @@ function createWidgetUI()
     local MainFrame = VerticalScrollingFrameObj:GetContentsFrame()
     SectionFrame.Parent = DockWidget
 
-
-    local DataCTSectionObj = CTSectionClass.new('Load/Save', 'Load/Save World', true, true, false)
-    local DataCTSectionTitle = DataCTSectionObj:GetSectionFrame()
-    local DataCTSectionFrame = DataCTSectionObj:GetContentsFrame()
-    DataCTSectionTitle.Size = UDim2.new(1,0,0,20)
-    DataCTSectionTitle.Parent = MainFrame
-
-    local WorldID_input = LabeledTextInputClass.new('worldID', 'World ID', 'Enter World ID')
-    WorldID_input:SetMaxGraphemes(1e10)
-    local WorldID_inputFrame = WorldID_input:GetFrame()
-    WorldID_inputFrame.Size = UDim2.new(1,0,0,25)
-    WorldID_inputFrame.Parent = DataCTSectionFrame
-
-    local LS_buttonFrame = Instance.new('Frame')
-    LS_buttonFrame.Size = UDim2.new(1,0,0,40)
-    guiUtil.syncGuiElementBackgroundColor(LS_buttonFrame)
-    LS_buttonFrame.BorderSizePixel = 0
-    LS_buttonFrame.Parent = DataCTSectionFrame
-
-    local saveButton = CustomTextButtonClass.new('save', 'Save'):GetButton()
-    saveButton.Size = UDim2.new(0.3,0,0,30)
-    saveButton.Position = UDim2.new(0.35,0,0.5,0)
-    saveButton.AnchorPoint = Vector2.new(0.5,0.5)
-    saveButton.Parent = LS_buttonFrame
-
-    local loadButton = CustomTextButtonClass.new('load', 'Load'):GetButton()
-    loadButton.Size = UDim2.new(0.3,0,0,30)
-    loadButton.Position = UDim2.new(0.65,0,0.5,0)
-    loadButton.AnchorPoint = Vector2.new(0.5,0.5)
-    loadButton.Parent = LS_buttonFrame
-
     local ConfigCTSectionObj = CTSectionClass.new('Configuration', 'Configuration', true, true, false)
     local ConfigCTSectionTitle = ConfigCTSectionObj:GetSectionFrame()
     local ConfigCTSectionFrame = ConfigCTSectionObj:GetContentsFrame()
@@ -134,9 +100,9 @@ function createWidgetUI()
     uniformBrushScaling_checkbox:SetValueChangedFunction(onUBS_ValueChanged)
     uniformBrushScaling_checkbox:GetFrame().Parent = ConfigCTSectionFrame
 
-    return DockWidget, WorldID_input, saveButton, loadButton, lock_y_coord_checkbox, uniformBrushScaling_checkbox
+    return DockWidget, lock_y_coord_checkbox, uniformBrushScaling_checkbox
 end
-local DockWidget, WorldID_input, saveButton, loadButton, lock_y_coord_checkbox, uniformBrushScaling_checkbox = createWidgetUI()
+local DockWidget, lock_y_coord_checkbox, uniformBrushScaling_checkbox = createWidgetUI()
 
 --creating and updating bounding box
 function updateBrush(position : Vector3)
@@ -332,135 +298,7 @@ function updateViewportInterface()
 		
 end
 
---Encodes the update_log to allow for saving by the Data Manager. [Incomplete. Need custom RLE]
-function encodeUpdates(update_log): string
 
-    local function deepCopy(t: {})
-        local copy = {}
-        for k, v in pairs(t) do
-            if type(v) == 'table' then
-                v = deepCopy(v)
-            end
-            copy[k] = v
-        end
-        return copy
-    end
-
-    local function tableEquals(t1, t2)
-        for k, v in ipairs(t1) do
-            if t2[k] ~= v then
-                return false
-            end
-        end
-        return true
-    end
-
-    local deepCopiedUpdateLog = deepCopy(update_log)
-
-    local chunk_size = Configuration.GetChunkSize()
-	local vert_chunk_size = Configuration.GetVertChunkSize()
-
-	local encoded_update_log = {}
-
-	for pos, chunk in pairs(deepCopiedUpdateLog) do
-        local curr_update_log_index = pos.X .. "," .. pos.Y .. "," .. pos.Z
-		encoded_update_log[curr_update_log_index] = {}
-		local curr_encoded_part = encoded_update_log[curr_update_log_index]
-		local current = 0
-		local next_index = 0
-		local runLength = 1
-
-		for i = 1, chunk_size^2 * vert_chunk_size + 1  do
-			current = chunk[i] or VoxelLib.new()
-			next_index = chunk[i+1] or VoxelLib.new()
-
-			if tableEquals(next_index, current) then
-				runLength += 1
-				continue
-			else
-				if runLength > 1 then
-					curr_encoded_part[#curr_encoded_part + 1] = {runLength, current}
-				else
-					curr_encoded_part[#curr_encoded_part + 1] = current
-				end
-
-				runLength = 1
-			end
-		end
-
-        encoded_update_log[curr_update_log_index] = curr_encoded_part
-	end
-
-    for _, chunk in pairs(encoded_update_log) do
-        for _, element in pairs(chunk) do
-            if #element == 2 then
-                element[2][5] = (element[2][5] :: EnumItem).Name :: string
-                element[2][6] = (element[2][6] :: Color3):ToHex() :: string
-            else
-                element[5] = (element[5] :: EnumItem).Name :: string
-                element[6] = (element[6] :: Color3):ToHex() :: string
-            end
-        end
-    end
-
-	local encoded_string = HttpService:JSONEncode(encoded_update_log)
-    local compressed_string = StringCompression.Compress(encoded_string)
-	return compressed_string
-end
-
-function decodeUpdates(encoded_string: string) : {}
-	local decoded_log = {}
-
-    local decompressed_string = StringCompression.Decompress(encoded_string)
-	local encoded_log = HttpService:JSONDecode(decompressed_string)
-    
-	for index, encoded_log_part in encoded_log do
-        local pos = Vector3.new(unpack(string.split(index, ",")))
-
-		decoded_log[pos] = {}
-		local decoded_log_part = decoded_log[pos]
-
-		for _,v in encoded_log_part do
-			if #v == 2 then
-                local voxelID = VoxelLib.new(v[2][2], v[2][3], v[2][4], Enum.Material[v[2][5]], Color3.fromHex(v[2][6]))
-				for _ = 1, v[1]+1 do
-					decoded_log_part[#decoded_log_part+1] = voxelID
-				end
-			else
-                local voxelID = VoxelLib.new(v[2], v[3], v[4], Enum.Material[v[5]], Color3.fromHex(v[6]))
-				decoded_log_part[#decoded_log_part+1] = voxelID
-			end
-		end
-
-	end
-
-	return decoded_log
-end
-
-function saveWorld()
-    local update_log: {} = Replicator.GetUpdateLog()
-    local encoded_log: string = encodeUpdates(update_log)
-
-    local stringVal = Instance.new("StringValue")
-    stringVal.Value = encoded_log
-    stringVal.Name = "Saved World ID"
-    stringVal.Parent = workspace
-end
-
-function loadWorld()
-    local encoded_log: string = WorldID_input:GetValue()
-    local decoded_update_log: {} = decodeUpdates(encoded_log)
-
-    Replicator.SetUpdateLog(decoded_update_log)
-
-    for chunkPos, _ in Replicator.GetUpdateLog() do
-        local chunk = ChunkClass.GetChunkFromPos(chunkPos) or ChunkClass.Load({chunkPos})[1]
-        chunk:Update()
-    end
-end
-
--- saveButton.MouseButton1Down:Connect(saveWorld)
--- loadButton.MouseButton1Down:Connect(loadWorld)
 
 --Toolbar button onclick connection
 button.Click:Connect(function()
