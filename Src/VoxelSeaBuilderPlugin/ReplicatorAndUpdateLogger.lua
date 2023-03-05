@@ -1,4 +1,7 @@
 --!nocheck
+local Modules = require(script.Parent.ModuleIndex)
+local VoxelLib = require(Modules.VoxelLib)
+
 local replicator = {}
 
 replicator.VoxelSeaBuilderPluginObjectsFolder = workspace:FindFirstChild("VoxelSeaBuilderPluginObjectsFolder")
@@ -20,7 +23,18 @@ end
 
 --Function to log updates to chunks.
 function replicator.LogUpdate(chunk, index : number, new_ID : number)
+	local function deepEquals(t1: {}, t2: {})
+		if #t1 ~= #t2 then return false end
+		for i = 1, #t1 do
+			if t1[i] ~= t2[i] then return false end
+		end
+		return true
+	end
+
 	local pos = chunk.Position
+	if deepEquals(new_ID, VoxelLib.new()) then
+		new_ID = nil
+	end
 	update_log[pos] = update_log[pos] or {}
 	update_log[pos][index] = new_ID
 end
