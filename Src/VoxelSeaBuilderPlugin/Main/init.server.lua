@@ -1,10 +1,13 @@
 
 local Modules = require(script.Parent.ModuleIndex)
 local Replicator = require(Modules.ReplicatorAndUpdateLogger)
+local ChunkClass = require(Modules.Chunk)
 local VoxelLib = require(Modules.VoxelLib)
 local AssetManager = require(Modules.AssetManager)
 local PoolService = require(Modules.PoolService)
 local Configuration = require(Modules.Configuration)
+local StringCompression = require(script.StringCompression)
+local EncodingUtil = require(script.EncodingUtil)
 
 local VPInterface = require(script.UiSetup)
 
@@ -80,6 +83,37 @@ function createWidgetUI()
     local MainFrame = VerticalScrollingFrameObj:GetContentsFrame()
     SectionFrame.Parent = DockWidget
 
+
+    local DataCTSectionObj = CTSectionClass.new('Load/Save', 'Load/Save World', true, true, false)
+    local DataCTSectionTitle = DataCTSectionObj:GetSectionFrame()
+    local DataCTSectionFrame = DataCTSectionObj:GetContentsFrame()
+    DataCTSectionTitle.Size = UDim2.new(1,0,0,20)
+    DataCTSectionTitle.Parent = MainFrame
+
+    local WorldID_input = LabeledTextInputClass.new('worldID', 'String Value Name', 'Enter Name.')
+    WorldID_input:SetMaxGraphemes(1e10)
+    local WorldID_inputFrame = WorldID_input:GetFrame()
+    WorldID_inputFrame.Size = UDim2.new(1,0,0,25)
+    WorldID_inputFrame.Parent = DataCTSectionFrame
+
+    local LS_buttonFrame = Instance.new('Frame')
+    LS_buttonFrame.Size = UDim2.new(1,0,0,40)
+    guiUtil.syncGuiElementBackgroundColor(LS_buttonFrame)
+    LS_buttonFrame.BorderSizePixel = 0
+    LS_buttonFrame.Parent = DataCTSectionFrame
+
+    local saveButton = CustomTextButtonClass.new('save', 'Save'):GetButton()
+    saveButton.Size = UDim2.new(0.3,0,0,30)
+    saveButton.Position = UDim2.new(0.35,0,0.5,0)
+    saveButton.AnchorPoint = Vector2.new(0.5,0.5)
+    saveButton.Parent = LS_buttonFrame
+
+    local loadButton = CustomTextButtonClass.new('load', 'Load'):GetButton()
+    loadButton.Size = UDim2.new(0.3,0,0,30)
+    loadButton.Position = UDim2.new(0.65,0,0.5,0)
+    loadButton.AnchorPoint = Vector2.new(0.5,0.5)
+    loadButton.Parent = LS_buttonFrame
+
     local ConfigCTSectionObj = CTSectionClass.new('Configuration', 'Configuration', true, true, false)
     local ConfigCTSectionTitle = ConfigCTSectionObj:GetSectionFrame()
     local ConfigCTSectionFrame = ConfigCTSectionObj:GetContentsFrame()
@@ -100,9 +134,9 @@ function createWidgetUI()
     uniformBrushScaling_checkbox:SetValueChangedFunction(onUBS_ValueChanged)
     uniformBrushScaling_checkbox:GetFrame().Parent = ConfigCTSectionFrame
 
-    return DockWidget, lock_y_coord_checkbox, uniformBrushScaling_checkbox
+    return DockWidget, WorldID_input, saveButton, loadButton, lock_y_coord_checkbox, uniformBrushScaling_checkbox
 end
-local DockWidget, lock_y_coord_checkbox, uniformBrushScaling_checkbox = createWidgetUI()
+local DockWidget, WorldID_input, saveButton, loadButton, lock_y_coord_checkbox, uniformBrushScaling_checkbox = createWidgetUI()
 
 --creating and updating bounding box
 function updateBrush(position : Vector3)
@@ -155,9 +189,9 @@ function updateBrush(position : Vector3)
         brush = currentBrush
         brush.Position = position
 
-        if brushType == 'Cuboidal' and not currentBrush:FindFirstChild('SelectionBox') then
-            updateCurrentBrushType(brush)
-        elseif brushType == 'Spherical' and not currentBrush:FindFirstChild('SelectionSphere') then
+        if (brushType == 'Cuboidal' and not currentBrush:FindFirstChild('SelectionBox')) or
+            (brushType == 'Spherical' and not currentBrush:FindFirstChild('SelectionSphere'))
+        then
             updateCurrentBrushType(brush)
         end
 
@@ -257,7 +291,7 @@ function onMouseClick()
 
         local chunks_to_update = {}
 
-        for _, voxel in pairs(voxelsInBrush) do
+        for _, voxel in voxelsInBrush do
 
             local chunk = voxel[1]
             local index = voxel[2]
@@ -271,7 +305,7 @@ function onMouseClick()
             end
         end
 
-        for _, chunk in pairs(chunks_to_update) do
+        for _, chunk in chunks_to_update do
             chunk:Update()
         end
         task.wait(0.1)
@@ -283,7 +317,7 @@ function updateViewportInterface()
     local material_indicator : ImageLabel = VPInterface['Material Indicator']
     local textureID : string
     if currentMat ~= 0 then
-        for _, material in ipairs(material_info) do
+        for _, material in material_info do
             if currentMat == material['Code'] then
                 textureID = material['Textures']['Front'].Texture
             end
@@ -298,12 +332,88 @@ function updateViewportInterface()
 		
 end
 
+function encodeUpdates(update_log): string
+    local function deepCopy(t: {})
+        local copy = {}
+        for k, v in t do
+            if type(v) == 'table' then
+                v = deepCopy(v)
+            end
+            copy[k] = v
+        end
+        return copy
+    end
 
+    local deepCopiedUpdateLog = deepCopy(update_log)
+    local encodedUpdateLog = {}
+
+    for position, voxelData in pairs(deepCopiedUpdateLog) do
+        encodedUpdateLog[position] = {}
+
+        for index, voxelID in pairs(voxelData) do
+            encodedUpdateLog[position][index] = EncodingUtil.EncodeTableToString(voxelID)
+        end
+    end
+
+    local RLEncodedLog = {}
+    for position, voxelData in pairs(encodedUpdateLog) do
+        RLEncodedLog[position] = EncodingUtil.RLEncode(voxelData)
+    end
+
+    local encodedUpdateLogString = EncodingUtil.EncodeTableToString(RLEncodedLog)
+
+    local compressed_string = StringCompression.Compress(encodedUpdateLogString)
+	return compressed_string
+    -- return encodedUpdateLogString
+end
+
+function decodeUpdates(encoded_string: string) : {}
+    local decompressed_string = StringCompression.Decompress(encoded_string)
+	local encodedLog = EncodingUtil.DecodeStringToTable(decompressed_string)
+    -- local encodedLog = EncodingUtil.DecodeStringToTable(encoded_string)
+
+    local RLDecodedLog = {}
+    for position, voxelData in pairs(encodedLog) do
+        RLDecodedLog[position] = EncodingUtil.RLDecode(voxelData)
+    end
+
+	return RLDecodedLog
+end
+
+function saveWorld()
+    local update_log: {} = Replicator.GetUpdateLog()
+    local encoded_log: string = encodeUpdates(update_log)
+
+    local stringVal = Instance.new("StringValue")
+    stringVal.Value = encoded_log
+    stringVal.Name = "Saved World ID"
+    stringVal.Parent = workspace
+end
+
+function loadWorld()
+    local stringValName: string = WorldID_input:GetValue()
+    if not workspace:FindFirstChild(stringValName) then
+        error("[[VoxelSea Builder Plugin]] Invalid String Value Name!")
+    end
+
+    local encoded_log = workspace[stringValName].Value
+    local decoded_update_log: {} = decodeUpdates(encoded_log)
+    Replicator.SetUpdateLog(decoded_update_log)
+
+    for chunkPos, _ in Replicator.GetUpdateLog() do
+        local chunk = ChunkClass.GetChunkFromPos(chunkPos) or ChunkClass.Load({chunkPos})[1]
+        chunk:Update()
+    end
+end
+
+saveButton.MouseButton1Down:Connect(saveWorld)
+loadButton.MouseButton1Down:Connect(loadWorld)
 
 --Toolbar button onclick connection
 button.Click:Connect(function()
     if not isBuilding then
         plugin:Activate(true)
+        button:SetActive(true)
         DockWidget.Enabled = true
 
         --viewport interface setup
@@ -390,6 +500,7 @@ button.Click:Connect(function()
         end)
 
     else
+        button:SetActive(false)
         plugin:Deactivate()
     end
 end)
