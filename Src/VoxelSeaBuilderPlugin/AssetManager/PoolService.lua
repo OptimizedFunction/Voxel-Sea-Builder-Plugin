@@ -44,7 +44,8 @@ function poolService.AddPart(part : Part)
         matFolder.Parent = TexturePool
     end
 
-    local matFolderPartition = Instance.new("Folder", matFolder)
+    local matFolderPartition = Instance.new("Folder")
+    matFolderPartition.Parent = matFolder
     debrisCollector.AddItem(matFolderPartition, tempTextureLifetime)
 
     for _,child in pairs(part:GetChildren()) do
@@ -110,7 +111,8 @@ function poolService.AddTexturesToPool(part: Part)
         matFolder.Parent = TexturePool
     end
 
-    local matFolderPartition = Instance.new("Folder", matFolder)
+    local matFolderPartition = Instance.new("Folder")
+    matFolderPartition.Parent = matFolder
     matFolderPartition.Name = #matFolder:GetChildren()
     debrisCollector.AddItem(matFolderPartition, tempTextureLifetime)
 
@@ -150,7 +152,7 @@ function poolService.FlushPools()
         part:Destroy()
     end
     PartPool = {}
-    
+
     for _, textureFolder in TexturePool:GetChildren() do
         textureFolder:Destroy()
     end
