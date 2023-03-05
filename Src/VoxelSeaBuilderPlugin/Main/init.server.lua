@@ -7,6 +7,7 @@ local AssetManager = require(Modules.AssetManager)
 local PoolService = require(Modules.PoolService)
 local Configuration = require(Modules.Configuration)
 local StringCompression = require(script.StringCompression)
+local EncodingUtil = require(script.EncodingUtil)
 
 local VPInterface = require(script.UiSetup)
 
@@ -332,9 +333,7 @@ function updateViewportInterface()
 		
 end
 
---TODO: make this function work
 function encodeUpdates(update_log): string
-
     local function deepCopy(t: {})
         local copy = {}
         for k, v in t do
@@ -346,41 +345,46 @@ function encodeUpdates(update_log): string
         return copy
     end
 
-    local function tableEquals(t1, t2)
-        for k, v in t1 do
-            if t2[k] ~= v then
-                return false
-            end
+    local deepCopiedUpdateLog = deepCopy(update_log)
+    local encodedUpdateLog = {}
+
+    for position, voxelData in pairs(deepCopiedUpdateLog) do
+        encodedUpdateLog[position] = {}
+
+        for index, voxelID in pairs(voxelData) do
+            encodedUpdateLog[position][index] = EncodingUtil.EncodeTableToString(voxelID)
         end
-        return true
     end
 
-    local deepCopiedUpdateLog = deepCopy(update_log)
+    local RLEncodedLog = {}
+    for position, voxelData in pairs(encodedUpdateLog) do
+        RLEncodedLog[position] = EncodingUtil.RLEncode(voxelData)
+    end
 
-    local chunk_size = Configuration.GetChunkSize()
-	local vert_chunk_size = Configuration.GetVertChunkSize()
+    local encodedUpdateLogString = EncodingUtil.EncodeTableToString(RLEncodedLog)
 
-	local encoded_update_log = {}
-
-	
-
-	local encoded_string = HttpService:JSONEncode(encoded_update_log)
-    local compressed_string = StringCompression.Compress(encoded_string)
-	return compressed_string
+    --local compressed_string = StringCompression.Compress(encodedUpdateLogString)
+	--return compressed_string
+    return encodedUpdateLogString
 end
 
---TODO: make this function work
 function decodeUpdates(encoded_string: string) : {}
-	local decoded_log = {}
+    --local decompressed_string = StringCompression.Decompress(encoded_string)
+	--local encodedLog = EncodingUtil.DecodeTableFromString(decompressed_string)
+    local encodedLog = EncodingUtil.DecodeStringToTable(encoded_string)
 
-    local decompressed_string = StringCompression.Decompress(encoded_string)
-	local encoded_log = HttpService:JSONDecode(decompressed_string)
+    print(encodedLog)
+    local RLDecodedLog = {}
+    for position, voxelData in pairs(encodedLog) do
+        RLDecodedLog[position] = EncodingUtil.RLDecode(voxelData)
+    end
 
-	return decoded_log
+	return RLDecodedLog
 end
 
 function saveWorld()
     local update_log: {} = Replicator.GetUpdateLog()
+    print(update_log)
     local encoded_log: string = encodeUpdates(update_log)
 
     local stringVal = Instance.new("StringValue")
@@ -390,24 +394,27 @@ function saveWorld()
 end
 
 function loadWorld()
-    local encoded_log: string = WorldID_input:GetValue()
-    local decoded_update_log: {} = decodeUpdates(encoded_log)
+    -- local encoded_log: string = WorldID_input:GetValue()
+    -- local decoded_update_log: {} = decodeUpdates(encoded_log)
+    -- Replicator.SetUpdateLog(decoded_update_log)
+    -- print(Replicator.GetUpdateLog())
 
-    Replicator.SetUpdateLog(decoded_update_log)
+    -- for chunkPos, _ in Replicator.GetUpdateLog() do
+    --     local chunk = ChunkClass.GetChunkFromPos(chunkPos) or ChunkClass.Load({chunkPos})[1]
+    --     chunk:Update()
+    -- end
 
-    for chunkPos, _ in Replicator.GetUpdateLog() do
-        local chunk = ChunkClass.GetChunkFromPos(chunkPos) or ChunkClass.Load({chunkPos})[1]
-        chunk:Update()
-    end
+    decodeUpdates("{[1,1,1]:{{1:1,2:0,3:0,4:0,5:EI=Concrete,6:C3=FFFFFF,},},[1,2,1]:{{1:1,2:0,3:0,4:0,5:EI=Concrete,6:C3=FFFFFF,},},}")
 end
 
--- saveButton.MouseButton1Down:Connect(saveWorld)
--- loadButton.MouseButton1Down:Connect(loadWorld)
+saveButton.MouseButton1Down:Connect(saveWorld)
+loadButton.MouseButton1Down:Connect(loadWorld)
 
 --Toolbar button onclick connection
 button.Click:Connect(function()
     if not isBuilding then
         plugin:Activate(true)
+        button:SetActive(true)
         DockWidget.Enabled = true
 
         --viewport interface setup
@@ -494,6 +501,7 @@ button.Click:Connect(function()
         end)
 
     else
+        button:SetActive(false)
         plugin:Deactivate()
     end
 end)
