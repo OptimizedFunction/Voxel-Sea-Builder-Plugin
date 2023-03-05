@@ -33,99 +33,97 @@ function EncodingUtil.EncodeTableToString(t: {}): string
     return s .. "}"
 end
 
-function EncodingUtil.DecodeStringToTable(s)
-    local pos = 1
-    
-    function decode_value()
-        local char = s:sub(pos, pos)
-        if char == "{" then
-            return decode_table()
-        elseif char == "[" then
-            return decode_vector()
-        elseif char == "E" then
-            return decode_enumitem()
-        elseif char == "C" then
-            return decode_color3()
+function EncodingUtil.DecodeStringToTable(s: string):{}
+    local pos = 1 --ignore the first {
+    local decodedTable = {}
+
+    --removing the first brace
+    s = s:sub(2)
+
+    local function decodeKey(key: string)
+        if key:sub(1, 1) == "[" then
+            local xStart = 2
+            local xEnd = key:find(",", xStart)
+            local x = tonumber(key:sub(xStart, xEnd - 1))
+
+            local yStart = xEnd + 1
+            local yEnd = key:find(",", yStart)
+            local y = tonumber(key:sub(yStart, yEnd - 1))
+
+            local zStart = yEnd + 1
+            local zEnd = key:find("]", zStart)
+            local z = tonumber(key:sub(zStart, zEnd - 1))
+
+            return Vector3.new(x, y, z)
+        elseif tonumber(key) then
+            return tonumber(key)
         else
-            return decode_primitive(1)
+            return key
         end
     end
-    
-    function decode_table()
-        local t = {}
-        pos = pos + 1
-        while true do
-            local char = s:sub(pos, pos)
-            if char == "}" then
-                pos = pos + 1
-                break
-            elseif char == "," then
-                pos = pos + 1
-            else
-                local key = nil
-                if char == "[" then
-                    key = decode_vector()
-                else
-                    key = decode_primitive(0)
+
+    local function decodeValue(val: string)
+        if val:sub(1, 3) == "EI=" then
+            return Enum.Material[val:sub(4)]
+        elseif val:sub(1, 3) == "C3=" then
+            return Color3.fromHex(val:sub(4))
+        elseif tonumber(val) then
+            return tonumber(val)
+        else
+            return val
+        end
+    end
+
+    while pos <= #s do
+        if s:sub(pos, pos) == "}" or s:sub(pos, pos) == "," then
+            pos = pos + 1
+            continue
+        end
+
+        local keyStart = pos
+        local keyEnd = s:find(":", keyStart)
+        if not keyEnd then break end --no keys remain. This means we are done!
+
+        local key = s:sub(keyStart, keyEnd - 1)
+        key = decodeKey(key) -- handles numbers, strings, and Vector3s only.
+
+        pos = keyEnd + 1 -- skip the :
+
+        local valStart = pos
+        if s:sub(valStart, valStart) == "{" then
+            local openBraces = 1
+            local strEnd = nil
+
+            for i = valStart+1, #s do
+                if s:sub(i, i) == "{" then openBraces += 1
+                elseif s:sub(i, i) == "}" then openBraces -= 1
                 end
-                pos = pos + 1 -- skip colon
-                local value = decode_value()
-                t[key] = value
+                if openBraces == 0 then
+                    strEnd = i
+                    break
+                end
             end
+            if not strEnd then print(openBraces) continue end
+            local subStr = string.sub(s, pos, strEnd)
+            local val = EncodingUtil.DecodeStringToTable(subStr)
+            pos = strEnd + 1
+            decodedTable[key] = val
+            continue
         end
-        return t
+        local valEnd = s:find(",", valStart)
+        local val = s:sub(valStart, if valEnd then valEnd-1 else nil)
+        val = decodeValue(val) -- handles Color3s, Enum.Material EnumItems and other basic types.
+
+        pos = if valEnd then valEnd + 1 else #s -- skip the ,
+
+        decodedTable[key] = val
     end
     
-    function decode_vector()
-        local i = s:find(",", pos)
-        local x = tonumber(s:sub(pos+1, i-1))
-        pos = i + 1
-        i = s:find(",", pos)
-        local y = tonumber(s:sub(pos, i-1))
-        pos = i + 1
-        i = s:find("%]", pos)
-        local z = tonumber(s:sub(pos, i-1))
-        pos = i + 2
-        return Vector3.new(x, y, z)
-    end
-    
-    function decode_enumitem()
-        pos = pos + 3 -- skip "EI="
-        local i = s:find(",", pos)
-        local name = s:sub(pos, i-1)
-        pos = i + 1
-        return Enum.Material[name]
-    end
-    
-    function decode_color3()
-        pos = pos + 3 -- skip "C3="
-        local hex = s:sub(pos, pos+5)
-        pos = pos + 6
-        return Color3.fromHex(hex)
-    end
-    
-    function decode_primitive(a: number)
-        local sep = if a == 0 then ":" else ","
-        local i = s:find(sep, pos)
-        local value = s:sub(pos, i-1)
-        pos = i + 1
-        if value == "true" or value == "false" then
-            return value == "true"
-        elseif tonumber(value) then
-            return tonumber(value)
-        else
-            return value
-        end
-    end
-    
-    return decode_table()
+    return decodedTable
 end
 
-
-
-
 --run length encoding
-function EncodingUtil.RLEncode(t: {})
+function EncodingUtil.RLEncode(t: {}): {}
     local encoded = {}
     local start_key = nil
 
@@ -147,7 +145,7 @@ function EncodingUtil.RLEncode(t: {})
 end
 
 --run length decoding
-function EncodingUtil.RLDecode(encoded)
+function EncodingUtil.RLDecode(encoded: {}): {}
     local function deepCopy(t: {})
         local copy = {}
         for k, v in t do
@@ -165,7 +163,7 @@ function EncodingUtil.RLDecode(encoded)
 
     local decoded = {}
     for _, run in encoded do
-        local start_key, end_key, value = run["1"], run["2"], run["3"]
+        local start_key, end_key, value = unpack(run)
         for k = start_key, end_key do
             decoded[k] = if typeof(value) == "table" then deepCopy(value) else value
         end

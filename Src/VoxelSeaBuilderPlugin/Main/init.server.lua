@@ -12,7 +12,6 @@ local EncodingUtil = require(script.EncodingUtil)
 local VPInterface = require(script.UiSetup)
 
 local UIS: UserInputService = game:GetService('UserInputService')
-local HttpService: HttpService = game:GetService('HttpService')
 
 local voxel_size : number = Configuration.GetVoxelSize()
 local material_info = AssetManager.Material_Info
@@ -91,7 +90,7 @@ function createWidgetUI()
     DataCTSectionTitle.Size = UDim2.new(1,0,0,20)
     DataCTSectionTitle.Parent = MainFrame
 
-    local WorldID_input = LabeledTextInputClass.new('worldID', 'World ID', 'Enter World ID')
+    local WorldID_input = LabeledTextInputClass.new('worldID', 'String Value Name', 'Enter Name.')
     WorldID_input:SetMaxGraphemes(1e10)
     local WorldID_inputFrame = WorldID_input:GetFrame()
     WorldID_inputFrame.Size = UDim2.new(1,0,0,25)
@@ -363,17 +362,16 @@ function encodeUpdates(update_log): string
 
     local encodedUpdateLogString = EncodingUtil.EncodeTableToString(RLEncodedLog)
 
-    --local compressed_string = StringCompression.Compress(encodedUpdateLogString)
-	--return compressed_string
-    return encodedUpdateLogString
+    local compressed_string = StringCompression.Compress(encodedUpdateLogString)
+	return compressed_string
+    -- return encodedUpdateLogString
 end
 
 function decodeUpdates(encoded_string: string) : {}
-    --local decompressed_string = StringCompression.Decompress(encoded_string)
-	--local encodedLog = EncodingUtil.DecodeTableFromString(decompressed_string)
-    local encodedLog = EncodingUtil.DecodeStringToTable(encoded_string)
+    local decompressed_string = StringCompression.Decompress(encoded_string)
+	local encodedLog = EncodingUtil.DecodeStringToTable(decompressed_string)
+    -- local encodedLog = EncodingUtil.DecodeStringToTable(encoded_string)
 
-    print(encodedLog)
     local RLDecodedLog = {}
     for position, voxelData in pairs(encodedLog) do
         RLDecodedLog[position] = EncodingUtil.RLDecode(voxelData)
@@ -384,7 +382,6 @@ end
 
 function saveWorld()
     local update_log: {} = Replicator.GetUpdateLog()
-    print(update_log)
     local encoded_log: string = encodeUpdates(update_log)
 
     local stringVal = Instance.new("StringValue")
@@ -394,17 +391,19 @@ function saveWorld()
 end
 
 function loadWorld()
-    -- local encoded_log: string = WorldID_input:GetValue()
-    -- local decoded_update_log: {} = decodeUpdates(encoded_log)
-    -- Replicator.SetUpdateLog(decoded_update_log)
-    -- print(Replicator.GetUpdateLog())
+    local stringValName: string = WorldID_input:GetValue()
+    if not workspace:FindFirstChild(stringValName) then
+        error("[[VoxelSea Builder Plugin]] Invalid String Value Name!")
+    end
 
-    -- for chunkPos, _ in Replicator.GetUpdateLog() do
-    --     local chunk = ChunkClass.GetChunkFromPos(chunkPos) or ChunkClass.Load({chunkPos})[1]
-    --     chunk:Update()
-    -- end
+    local encoded_log = workspace[stringValName].Value
+    local decoded_update_log: {} = decodeUpdates(encoded_log)
+    Replicator.SetUpdateLog(decoded_update_log)
 
-    decodeUpdates("{[1,1,1]:{{1:1,2:0,3:0,4:0,5:EI=Concrete,6:C3=FFFFFF,},},[1,2,1]:{{1:1,2:0,3:0,4:0,5:EI=Concrete,6:C3=FFFFFF,},},}")
+    for chunkPos, _ in Replicator.GetUpdateLog() do
+        local chunk = ChunkClass.GetChunkFromPos(chunkPos) or ChunkClass.Load({chunkPos})[1]
+        chunk:Update()
+    end
 end
 
 saveButton.MouseButton1Down:Connect(saveWorld)
